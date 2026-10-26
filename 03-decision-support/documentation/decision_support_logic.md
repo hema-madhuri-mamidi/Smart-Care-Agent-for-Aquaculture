@@ -2,161 +2,110 @@
 
 ## Aquarium Care Agent
 
-The Decision Support Logic is responsible for analyzing aquarium conditions
-and providing actionable recommendations to the aquarium owner.
+The Decision Support Logic evaluates supplied aquarium water-quality readings, classifies risk, explains detected conditions, and generates actionable recommendations.
 
-The system uses sensor readings and predicted aquarium health risk to determine
-whether the aquarium condition is normal, requires attention, or needs immediate action.
+The current prototype uses threshold-based rules for pH, temperature, dissolved oxygen, ammonia, and water level. It also supports an optional predicted-temperature input.
 
 ## 1. Decision Levels
 
-The Aquarium Care Agent uses three decision levels:
+- **Normal — Low Risk:** No configured rule was triggered. Continue monitoring aquarium conditions.
+- **Warning — Medium Risk:** One or more conditions require attention. Verify the reading and inspect relevant equipment.
+- **Critical — High Risk:** A configured critical condition was detected. Verify the reading promptly and take appropriate corrective action.
 
-### Low Risk
+The final status reflects the highest risk level triggered by the configured rules.
 
-The aquarium conditions are within acceptable limits.
-No immediate action is required.
+## 2. Implemented Decision Rules
 
-### Medium Risk
+The prototype uses default thresholds that can be overridden through the `limits` parameter. The following values are illustrative and must be validated for the target fish species and aquarium before real-world use.
 
-One or more parameters show an abnormal condition.
-The aquarium owner should monitor the aquarium and take corrective action.
+| Parameter | Configured rule |
+|---|---|
+| pH | Warning if below 6.5 or above 8.5 |
+| Temperature | Warning if below 24°C or above 30°C |
+| Dissolved oxygen | Critical if below 4.0 mg/L |
+| Ammonia | Warning at 0.25 mg/L or higher; Critical at 0.5 mg/L or higher |
+| Water level | Warning if below 20% |
 
-### High Risk
+The prototype generates reasons and recommendations for detected conditions.
 
-A critical condition is detected or multiple parameters indicate serious
-risk. The aquarium owner should take immediate corrective action.
+## 3. Prediction-Aware Warning
 
-## 2. Decision Rules
+The decision engine accepts an optional `predicted_temperature` value. If the supplied prediction is outside the configured temperature range, it generates a warning and identifies the condition as a forecast rather than a confirmed reading.
 
-The Care Agent uses predefined rules to convert aquarium conditions into
-actionable recommendations.
+The trained predictive model has not yet been verified as connected to this input. Until that integration is tested, the prediction must be treated as a supplied demonstration value.
 
-### Rule 1 – pH
+## 4. Decision Process
 
-IF the pH is outside the selected safe range,
+1. Receive aquarium readings.
+2. Validate required readings and supported input ranges.
+3. Compare readings with configured thresholds.
+4. Determine the highest triggered risk level.
+5. Generate decision reasons and recommendations.
+6. Return the decision result.
+7. Save the decision to CSV when the save function is called.
 
-THEN:
-- classify the condition as abnormal,
-- generate a pH warning,
-- recommend checking water quality and performing an appropriate partial
-  water change if required.
+The decision result includes a timestamp, status, risk level, readings, optional predicted temperature, reasons, and recommendations.
 
-### Rule 2 – Temperature
+## 5. Alert Generation and History
 
-IF the water temperature is outside the selected acceptable range,
+The alert-generation module converts decision results into aquarium-health alerts with a priority, message, risk level, and recommended actions.
 
-THEN:
-- generate a temperature warning,
-- recommend checking the aquarium heater or cooling arrangement,
-- advise gradual temperature correction.
+Alert records are saved to:
 
-### Rule 3 – Dissolved Oxygen
+`alert_generation/alert_history.csv`
 
-IF dissolved oxygen becomes critically low,
+Decision records are saved to:
 
-THEN:
-- generate a high-priority alert,
-- recommend increasing aeration,
-- advise the aquarium owner to check the filtration and aeration system.
+`decision_engine/decision_history.csv`
 
-### Rule 4 – Ammonia
+The history files have been checked and contain records from Normal, Warning, Critical, and feeding-reminder tests.
 
-IF ammonia concentration becomes high,
+## 6. Scheduled Feeding Reminders
 
-THEN:
-- generate a critical water-quality alert,
-- recommend checking the aquarium and filtration system,
-- recommend an appropriate partial water change.
+The scheduled feeding prototype checks the configured feeding times every 10 seconds and generates a reminder when a scheduled time is reached. Duplicate protection prevents repeated alerts for the same scheduled minute on the same day.
 
-### Rule 5 – Water Level
+The scheduler was tested using a temporary test time, and an alert was generated and saved successfully.
 
-IF the water level becomes too low,
+The default example schedule is 08:00, 14:00, and 20:00. These are example times and must be replaced with the aquarium's approved feeding schedule when appropriate.
 
-THEN:
-- generate a water-level warning,
-- recommend checking for evaporation or leakage,
-- recommend restoring the water level appropriately.
+The current implementation generates and records reminders; it does not itself deliver phone push notifications.
 
-## 3. ML Prediction and Rule-Based Decision Support
+## 7. API Integration
 
-The Random Forest model provides an aquarium health-risk prediction.
-The Decision Support Logic then combines the predicted risk with current
-sensor conditions to generate an appropriate recommendation.
+A FastAPI service is available through `backend/api/main.py`.
 
-For example:
+- `GET /api/health` checks whether the API is running.
+- `POST /api/decision` accepts aquarium readings, evaluates the decision, generates an alert, saves decision and alert history, and returns the results.
 
-Current Sensor Data
-        ↓
-Random Forest Prediction
-        ↓
-Aquarium Health Risk
-        ↓
-Decision Support Rules
-        ↓
-Actionable Recommendation
+The health endpoint and decision endpoint were tested successfully with Normal, Warning, and Critical example inputs.
 
-## 4. Example Decisions
+The API returns its results to the caller. Successful API responses do not establish that a dashboard or phone notification service is connected.
 
-### Example 1 – Low Risk
+## 8. Testing Status
 
-Condition:
-All monitored parameters are within acceptable ranges.
+The following behaviors have been tested during prototype development:
 
-Decision:
-Continue normal monitoring.
+- Normal, Warning, and Critical decision classifications.
+- pH and temperature warning scenarios.
+- Critically low dissolved oxygen.
+- Prediction-aware temperature warning.
+- Missing or invalid reading handling in decision-engine tests.
+- Decision and alert history saving.
+- Feeding reminder generation.
+- Scheduled feeding trigger using a temporary test time.
+- API health check and decision requests for Normal, Warning, and Critical conditions.
 
-Recommendation:
-"No immediate action required. Continue monitoring aquarium conditions."
+These tests establish prototype behavior only. They do not establish live sensor accuracy, real-world fish-health prediction accuracy, or production readiness.
 
+## 9. Current Limitations and Remaining Verification
 
-### Example 2 – Medium Risk
+- The current tests use demonstration readings rather than verified live sensor data.
+- Thresholds require validation for the target fish species and aquarium.
+- The trained predictive model connection has not yet been verified.
+- Live sensor integration has not yet been verified.
+- Dashboard display and phone notification delivery have not been verified as part of this module.
+- Final regression testing and documentation review should be completed before declaring the module finished.
 
-Condition:
-A water-quality parameter shows an abnormal value.
+## 10. Purpose of This Module
 
-Decision:
-Generate a warning.
-
-Recommendation:
-"Check the affected water-quality parameter and take corrective action."
-
-
-### Example 3 – High Risk
-
-Condition:
-Dissolved oxygen is critically low.
-
-Decision:
-Generate a critical alert.
-
-Recommendation:
-"Increase aeration immediately and check the aquarium filtration system."
-
-
-### Example 4 – High Ammonia
-
-Condition:
-Ammonia concentration is high.
-
-Decision:
-Generate a critical water-quality alert.
-
-Recommendation:
-"Check water quality and filtration and perform an appropriate partial
-water change."
-
-## 5. Overall Decision Flow
-
-The overall decision process is:
-
-Current Aquarium Data
-→ Health Risk Prediction
-→ Decision Support Rules
-→ Risk Classification
-→ Actionable Recommendation
-→ Aquarium Owner
-
-The system therefore converts raw sensor information and model predictions
-into practical recommendations that can help the aquarium owner respond
-to abnormal aquarium conditions.
+The Decision Support Logic converts supplied aquarium readings into understandable risk classifications, reasons, recommendations, and alerts. Its API and CSV history provide outputs that can be consumed by other project components. Dashboard presentation, trained-model connectivity, live sensor input, and phone notification delivery require separate integration and verification.
