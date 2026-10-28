@@ -11,7 +11,12 @@ const iconByKey = {
   ammonia: "TestTube2",
 };
 
-export default function SensorCard({ param, chartColor = "#2bc4e0" }) {
+export default function SensorCard({
+  param,
+  chartColor = "#2bc4e0",
+  showHistory = true,
+  showStatus = true,
+}) {
   const Icon = Icons[iconByKey[param.key]] || Icons.Activity;
 
   return (
@@ -26,11 +31,13 @@ export default function SensorCard({ param, chartColor = "#2bc4e0" }) {
         <span className="text-2xl font-display font-semibold text-white">{param.current}</span>
         <span className="text-sm text-slate-400 mb-0.5">{param.unit}</span>
       </div>
-      <LineChart data={param.history} color={chartColor} mini height={48} />
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span>Safe range: {param.safeRange}</span>
-        <StatusBadge label={param.status} />
-      </div>
+      {showHistory && <LineChart data={param.history} color={chartColor} mini height={48} />}
+      {(param.safeRange || showStatus) && (
+        <div className="flex items-center justify-between text-xs text-slate-500">
+          {param.safeRange && <span>Safe range: {param.safeRange}</span>}
+          {showStatus && <StatusBadge label={param.status} />}
+        </div>
+      )}
     </div>
   );
 }
