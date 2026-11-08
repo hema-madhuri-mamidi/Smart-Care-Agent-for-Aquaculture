@@ -7,14 +7,39 @@ const requiredReadingFields = [
   "ammonia",
   "water_level",
 ];
+const TEMPERATURE_PREDICTION_ENDPOINT =
+  "http://127.0.0.1:8000/api/predict/temperature";
+const INTEGRATED_EVALUATION_ENDPOINT =
+  "http://127.0.0.1:8000/api/evaluate";
+export async function predictTemperature(reading) {
+  const response = await fetch(TEMPERATURE_PREDICTION_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(reading),
+  });
 
-export async function evaluateDecision(readings) {
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result?.detail || "Temperature prediction failed."
+    );
+  }
+
+  return result;
+}
+export async function evaluateDecision(readings, predictedTemperature = null) {
   const response = await fetch(DECISION_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(readings),
+    body: JSON.stringify({
+      ...readings,
+      predicted_temperature: predictedTemperature,
+    }),
   });
 
   let result;
@@ -49,8 +74,59 @@ export async function evaluateDecision(readings) {
 
   return result;
 }
-const FEEDING_REMINDER_ENDPOINT =
-  "http://127.0.0.1:8000/api/feeding-reminder";
+export async function evaluateDecisionWithPrediction(
+  readings,
+  temperatureReading = null
+) {
+  // No timestamped sensor reading yet:
+  // continue evaluating current aquarium conditions.
+  if (!temperatureReading?.timestamp) {
+    const decisionResult = await evaluateDecision(readings);
+
+    return {
+      ...decisionResult,
+      temperature_prediction: {
+        status: "waiting_for_sensor_data",
+        message: "Waiting for timestamped sensor readings.",
+      },
+    };
+  }
+
+  // Timestamped reading available:
+  // use the combined backend endpoint.
+  const response = await fetch(INTEGRATED_EVALUATION_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...readings,
+      timestamp: temperatureReading.timestamp,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result?.detail || "Integrated aquarium evaluation failed."
+    );
+  }
+
+  if (!result?.decision || !result?.alert) {
+    throw new Error("Invalid integrated evaluation response.");
+  }
+
+  return {
+    ...result,
+    temperature_prediction: result.prediction
+      ? { prediction: result.prediction }
+      : {
+          status: result.prediction_status,
+          message: result.prediction_message,
+        },
+  };
+}
 
 export async function checkFeedingReminder(feedingTimes) {
   const response = await fetch(FEEDING_REMINDER_ENDPOINT, {

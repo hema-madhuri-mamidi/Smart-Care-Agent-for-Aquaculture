@@ -4,7 +4,7 @@
 
 import sys
 from pathlib import Path
-
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -21,7 +21,17 @@ from decision_engine.decision_engine import evaluate_aquarium, save_decision
 from alert_generation.alert_generator import generate_alert
 from alert_generation.alert_history import save_alert
 from feeding_schedule.feeding_reminder import check_feeding_time
+from backend.predictive_models.temperature_predictor import (
+    TemperaturePredictor,
+    MissingHistoryError,
+)
+# Initialize the trained temperature prediction model.
+TEMPERATURE_MODEL_PATH = (
+    ROOT_DIR / "backend" / "predictive_models" / "models"
+    / "linear_temperature_model.joblib"
+)
 
+temperature_predictor = TemperaturePredictor(TEMPERATURE_MODEL_PATH)
 app = FastAPI(
     title="Smart Aquarium Decision Support API",
     version="0.1.0",
@@ -57,7 +67,13 @@ class DecisionRequest(BaseModel):
         default=None,
         description="Optional model prediction: Low, Medium, or High.",
     )
+class IntegratedAquariumRequest(DecisionRequest):
+    """Combined request for prediction and decision evaluation."""
 
+    timestamp: datetime = Field(
+        ...,
+        description="Timestamp of the temperature reading",
+    )
 class FeedingReminderRequest(BaseModel):
     """Request body for aquarium feeding reminders."""
 
@@ -70,6 +86,19 @@ class FeedingReminderRequest(BaseModel):
         default=None,
         description="Optional current time for testing in HH:MM format",
     )
+class TemperatureReadingRequest(BaseModel):
+    """Request body for temperature prediction."""
+
+    timestamp: datetime = Field(
+        ...,
+        description="Timestamp of the sensor reading",
+    )
+    water_temp: float = Field(
+        ...,
+        ge=0,
+        le=50,
+        description="Current aquarium water temperature in Celsius",
+    )
 @app.get("/api/health")
 def health_check():
     """Simple health endpoint for verifying the API is running."""
@@ -77,7 +106,91 @@ def health_check():
         "status": "ok",
         "message": "Decision Support backend is running.",
     }
+@app.post("/api/predict/temperature")
+def predict_temperature(request: TemperatureReadingRequest):
+    """Predict aquarium water temperature 30 minutes ahead."""
 
+    try:
+        temperature_predictor.add_reading(
+            timestamp=request.timestamp,
+            temperature=request.water_temp,
+        )
+
+        prediction = temperature_predictor.predict()
+
+        return {
+            "prediction": prediction,
+        }
+
+    except MissingHistoryError as exc:
+        return {
+            "status": "waiting_for_history",
+            "message": str(exc),
+        }
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
+@app.post("/api/evaluate")
+def evaluate_integrated_aquarium(request: IntegratedAquariumRequest):
+    """Run temperature prediction and aquarium decision together."""
+
+    try:
+        temperature_predictor.add_reading(
+            timestamp=request.timestamp,
+            temperature=request.temperature,
+        )
+
+        prediction = temperature_predictor.predict()
+
+        predicted_temperature = prediction["predicted_temperature_c"]
+        prediction_status = "success"
+
+    except MissingHistoryError as exc:
+        prediction = None
+        predicted_temperature = None
+        prediction_status = "waiting_for_history"
+        prediction_message = str(exc)
+    except ValueError as exc:
+            raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+         ) from exc
+
+    readings = {
+        "ph": request.ph,
+        "temperature": request.temperature,
+        "dissolved_oxygen": request.dissolved_oxygen,
+        "ammonia": request.ammonia,
+        "water_level": request.water_level,
+    }
+
+    try:
+        decision = evaluate_aquarium(
+            readings,
+            predicted_temperature=predicted_temperature,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    alert = generate_alert(decision)
+
+    save_decision(decision)
+    save_alert(alert)
+
+    return {
+        "prediction_status": prediction_status,
+        "prediction": prediction,
+        "prediction_message": (
+            prediction_message
+            if prediction_status == "waiting_for_history"
+            else None
+        ),
+        "decision": decision,
+        "alert": alert,
+    }
 @app.post("/api/feeding-reminder")
 def feeding_reminder(request: FeedingReminderRequest):
     """Check whether an aquarium feeding reminder is due."""

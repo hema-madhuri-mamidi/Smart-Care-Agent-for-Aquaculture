@@ -51,6 +51,7 @@ logs/
 *.db
 *.pkl
 *.joblib
+!backend/predictive_models/models/linear_temperature_model.joblib
 *.h5
 *.hdf5
 *.csv

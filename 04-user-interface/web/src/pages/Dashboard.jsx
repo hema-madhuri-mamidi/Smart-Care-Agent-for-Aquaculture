@@ -5,7 +5,7 @@ import SensorCard from "../components/SensorCard.jsx";
 import { aquarium, parameters, aiAgent, automationHistory } from "../data/mockData.js";
 import { HeartPulse, Sparkles } from "lucide-react";
 import StatusBadge from "../components/StatusBadge.jsx";
-import { evaluateDecision } from "../services/aquariumApi.js";
+import { evaluateDecisionWithPrediction } from "../services/aquariumApi.js";
 
 const mockReadings = {
   ph: parameters.ph.current,
@@ -35,7 +35,7 @@ export default function Dashboard() {
     setApiError("");
     setApiResult(null);
 
-    evaluateDecision(mockReadings)
+    evaluateDecisionWithPrediction(mockReadings, null)
       .then((result) => {
         if (isCurrentRequest) setApiResult(result);
       })
@@ -54,6 +54,7 @@ export default function Dashboard() {
   }, [retryCount]);
 
   const decision = apiResult?.decision;
+  const temperaturePrediction = apiResult?.temperature_prediction;
   const decisionBorderClass =
     decision?.risk_level === "High"
       ? "border-status-bad"
@@ -196,6 +197,32 @@ export default function Dashboard() {
                 <StatusBadge label={apiResult.alert.priority} />
                 <span className="text-sm text-slate-400">{apiResult.alert.message}</span>
               </div>
+              {/* Temperature prediction status */}
+<div className="mb-4 rounded-lg border border-aqua-300/20 bg-aqua-300/5 p-3">
+  <p className="text-sm font-medium text-white">
+    Temperature Forecast
+  </p>
+
+  {temperaturePrediction?.prediction?.status === "success" ? (
+    <div className="mt-2 text-sm text-slate-300">
+      <p>
+        Predicted temperature:{" "}
+        <span className="font-semibold text-aqua-300">
+          {temperaturePrediction.prediction.predicted_temperature_c}°C
+        </span>
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
+        Forecast horizon:{" "}
+        {temperaturePrediction.prediction.forecast_horizon_minutes} minutes
+      </p>
+    </div>
+  ) : (
+    <p className="mt-1 text-xs text-slate-400">
+      Waiting for timestamped sensor readings. Temperature forecasting
+      will become available when the sensor history is connected.
+    </p>
+  )}
+</div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Recommendations</p>
               <ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-slate-400">
                 {decision.recommendations.map((recommendation, index) => (
