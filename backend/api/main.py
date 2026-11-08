@@ -20,6 +20,7 @@ if str(DECISION_SUPPORT_DIR) not in sys.path:
 from decision_engine.decision_engine import evaluate_aquarium, save_decision
 from alert_generation.alert_generator import generate_alert
 from alert_generation.alert_history import save_alert
+from feeding_schedule.feeding_reminder import check_feeding_time
 
 app = FastAPI(
     title="Smart Aquarium Decision Support API",
@@ -57,7 +58,18 @@ class DecisionRequest(BaseModel):
         description="Optional model prediction: Low, Medium, or High.",
     )
 
+class FeedingReminderRequest(BaseModel):
+    """Request body for aquarium feeding reminders."""
 
+    feeding_times: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Scheduled feeding times in HH:MM format",
+    )
+    current_time: str | None = Field(
+        default=None,
+        description="Optional current time for testing in HH:MM format",
+    )
 @app.get("/api/health")
 def health_check():
     """Simple health endpoint for verifying the API is running."""
@@ -66,7 +78,25 @@ def health_check():
         "message": "Decision Support backend is running.",
     }
 
+@app.post("/api/feeding-reminder")
+def feeding_reminder(request: FeedingReminderRequest):
+    """Check whether an aquarium feeding reminder is due."""
 
+    try:
+        reminder = check_feeding_time(
+            feeding_times=request.feeding_times,
+            current_time=request.current_time,
+        )
+
+        return {
+            "feeding_reminder": reminder,
+        }
+
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=str(exc),
+        ) from exc
 @app.post("/api/decision")
 def evaluate_decision(request: DecisionRequest):
     """

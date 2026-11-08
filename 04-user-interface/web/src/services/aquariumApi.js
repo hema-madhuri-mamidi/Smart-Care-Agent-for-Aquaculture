@@ -49,3 +49,31 @@ export async function evaluateDecision(readings) {
 
   return result;
 }
+const FEEDING_REMINDER_ENDPOINT =
+  "http://127.0.0.1:8000/api/feeding-reminder";
+
+export async function checkFeedingReminder(feedingTimes) {
+  const response = await fetch(FEEDING_REMINDER_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      feeding_times: feedingTimes,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result?.detail || "Unable to check feeding reminder."
+    );
+  }
+
+  if (!result?.feeding_reminder) {
+    throw new Error("Invalid feeding reminder response.");
+  }
+
+  return result.feeding_reminder;
+}
