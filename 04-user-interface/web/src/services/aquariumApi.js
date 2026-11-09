@@ -1,5 +1,6 @@
 const DECISION_ENDPOINT = "http://127.0.0.1:8000/api/decision";
-
+const SENSOR_STATUS_ENDPOINT =
+  "http://127.0.0.1:8000/api/sensor-status";
 const requiredReadingFields = [
   "temperature",
   "ph",
@@ -152,4 +153,21 @@ export async function checkFeedingReminder(feedingTimes) {
   }
 
   return result.feeding_reminder;
+}
+export async function getSensorStatus() {
+  const response = await fetch(SENSOR_STATUS_ENDPOINT);
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result?.detail || "Unable to fetch sensor connection status."
+    );
+  }
+
+  if (!["waiting", "connected", "stale"].includes(result?.status)) {
+    throw new Error("Invalid sensor status response.");
+  }
+
+  return result;
 }

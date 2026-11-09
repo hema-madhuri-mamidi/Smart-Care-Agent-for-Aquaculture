@@ -5,7 +5,10 @@ import SensorCard from "../components/SensorCard.jsx";
 import { aquarium, parameters, aiAgent, automationHistory } from "../data/mockData.js";
 import { HeartPulse, Sparkles } from "lucide-react";
 import StatusBadge from "../components/StatusBadge.jsx";
-import { evaluateDecisionWithPrediction } from "../services/aquariumApi.js";
+import {
+  evaluateDecisionWithPrediction,
+  getSensorStatus,
+} from "../services/aquariumApi.js";
 
 const mockReadings = {
   ph: parameters.ph.current,
@@ -28,7 +31,8 @@ export default function Dashboard() {
   const [apiError, setApiError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [retryCount, setRetryCount] = useState(0);
-
+  const [sensorStatus, setSensorStatus] = useState(null);
+  const [sensorStatusError, setSensorStatusError] = useState("");
   useEffect(() => {
     let isCurrentRequest = true;
     setIsLoading(true);
@@ -52,6 +56,38 @@ export default function Dashboard() {
       isCurrentRequest = false;
     };
   }, [retryCount]);
+  useEffect(() => {
+  let isActive = true;
+
+  const fetchSensorStatus = async () => {
+    try {
+      const result = await getSensorStatus();
+
+      if (isActive) {
+        setSensorStatus(result);
+        setSensorStatusError("");
+      }
+    } catch (error) {
+      if (isActive) {
+        setSensorStatus(null);
+        setSensorStatusError(
+          error instanceof Error
+            ? error.message
+            : "Unable to fetch sensor status."
+        );
+      }
+    }
+  };
+
+  fetchSensorStatus();
+
+  const intervalId = window.setInterval(fetchSensorStatus, 30000);
+
+  return () => {
+    isActive = false;
+    window.clearInterval(intervalId);
+  };
+}, []);
 
   const decision = apiResult?.decision;
   const temperaturePrediction = apiResult?.temperature_prediction;
@@ -115,6 +151,49 @@ export default function Dashboard() {
             Backend decision loaded from demo mock inputs. These values are not live hardware readings.
           </p>
         )}
+                <div className="mb-5 rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-white">
+                Sensor Connection
+              </h3>
+              <p className="mt-1 text-xs text-slate-400">
+                {sensorStatusError
+                  ? sensorStatusError
+                  : sensorStatus?.message || "Checking sensor connection..."}
+              </p>
+            </div>
+
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                sensorStatusError
+                  ? "bg-slate-500/20 text-slate-300"
+                  : sensorStatus?.status === "connected"
+                    ? "bg-green-500/20 text-green-400"
+                    : sensorStatus?.status === "stale"
+                      ? "bg-red-500/20 text-red-400"
+                      : "bg-yellow-500/20 text-yellow-400"
+              }`}
+            >
+              {sensorStatusError
+                ? "Unavailable"
+                : sensorStatus?.status === "connected"
+                  ? "Connected"
+                  : sensorStatus?.status === "stale"
+                    ? "Stale"
+                    : sensorStatus?.status === "waiting"
+                      ? "Waiting"
+                      : "Checking..."}
+            </span>
+          </div>
+
+          {sensorStatus?.last_received_at && (
+            <p className="mt-2 text-xs text-slate-400">
+              Last reading received:{" "}
+              {new Date(sensorStatus.last_received_at).toLocaleString()}
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-[280px_1fr] gap-5 mb-6">

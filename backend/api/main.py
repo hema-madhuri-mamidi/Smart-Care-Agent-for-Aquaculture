@@ -32,6 +32,11 @@ TEMPERATURE_MODEL_PATH = (
 )
 
 temperature_predictor = TemperaturePredictor(TEMPERATURE_MODEL_PATH)
+# Track the time when the backend last accepted a sensor reading.
+last_sensor_received_at: datetime | None = None
+
+# Consider readings stale if no new reading arrives within 10 minutes.
+SENSOR_TIMEOUT_SECONDS = 600
 app = FastAPI(
     title="Smart Aquarium Decision Support API",
     version="0.1.0",
@@ -53,12 +58,39 @@ app.add_middleware(
 
 class DecisionRequest(BaseModel):
     """Expected request body for aquarium decision evaluation."""
-
-    ph: float = Field(..., description="pH reading")
-    temperature: float = Field(..., description="Current water temperature in C")
-    dissolved_oxygen: float = Field(..., description="Dissolved oxygen reading in mg/L")
-    ammonia: float = Field(..., description="Ammonia reading in mg/L")
-    water_level: float = Field(..., description="Water level percentage")
+    ph: float = Field(
+        ...,
+        ge=0,
+        le=14,
+        allow_inf_nan=False,
+        description="pH reading",
+    )
+    temperature: float = Field(
+        ...,
+        ge=-5,
+        le=60,
+        allow_inf_nan=False,
+        description="Current water temperature in C",
+    )
+    dissolved_oxygen: float = Field(
+        ...,
+        ge=0,
+        allow_inf_nan=False,
+        description="Dissolved oxygen reading in mg/L",
+    )
+    ammonia: float = Field(
+        ...,
+        ge=0,
+        allow_inf_nan=False,
+        description="Ammonia reading in mg/L",
+    )
+    water_level: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        allow_inf_nan=False,
+        description="Water level percentage",
+    )
     predicted_temperature: float | None = Field(
         default=None,
         description="Optional predicted temperature value for forecasting logic.",
@@ -106,6 +138,36 @@ def health_check():
         "status": "ok",
         "message": "Decision Support backend is running.",
     }
+
+@app.get("/api/sensor-status")
+def sensor_status():
+
+    """Report whether recent sensor readings are being received."""
+
+    if last_sensor_received_at is None:
+        return {
+            "status": "waiting",
+            "message": "No sensor readings received yet.",
+            "last_received_at": None,
+        }
+
+    elapsed_seconds = (
+        datetime.now().astimezone() - last_sensor_received_at
+    ).total_seconds()
+
+    if elapsed_seconds <= SENSOR_TIMEOUT_SECONDS:
+        return {
+            "status": "connected",
+            "message": "Sensor readings are being received.",
+            "last_received_at": last_sensor_received_at.isoformat(),
+        }
+
+    return {
+        "status": "stale",
+        "message": "No recent sensor readings received.",
+        "last_received_at": last_sensor_received_at.isoformat(),
+    }
+
 @app.post("/api/predict/temperature")
 def predict_temperature(request: TemperatureReadingRequest):
     """Predict aquarium water temperature 30 minutes ahead."""
@@ -136,12 +198,13 @@ def predict_temperature(request: TemperatureReadingRequest):
 @app.post("/api/evaluate")
 def evaluate_integrated_aquarium(request: IntegratedAquariumRequest):
     """Run temperature prediction and aquarium decision together."""
-
+    global last_sensor_received_at
     try:
         temperature_predictor.add_reading(
             timestamp=request.timestamp,
             temperature=request.temperature,
         )
+        last_sensor_received_at = datetime.now().astimezone()
 
         prediction = temperature_predictor.predict()
 
