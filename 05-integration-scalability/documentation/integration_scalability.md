@@ -77,7 +77,38 @@ and accessible manner.
 
 Together, these components form the complete Aquarium Care Agent
 decision-support system.
+### Sensor Connection Monitoring
 
+The system includes a sensor connection monitoring mechanism
+to track whether recent aquarium readings are being received
+by the backend.
+
+The FastAPI backend provides the following endpoint:
+
+- GET `/api/sensor-status`
+
+The endpoint reports three sensor connection states:
+
+| Status | Description |
+|---|---|
+| Waiting | No sensor readings have been received yet. |
+| Connected | A sensor reading has been received within the last 10 minutes. |
+| Stale | No new sensor reading has been received within the last 10 minutes. |
+
+The backend tracks the time when a sensor reading is successfully
+accepted through the integrated evaluation endpoint (`POST /api/evaluate`).
+
+The frontend dashboard retrieves sensor status automatically
+every 30 seconds and displays the current connection state.
+
+If the backend status endpoint cannot be reached, the dashboard
+displays an Unavailable state.
+
+The current implementation uses in-memory status tracking.
+The status resets when the backend restarts.
+
+Actual ESP32 sensor communication and live hardware verification
+are pending hardware integration.
 ## 4. Scalability
 
 The Aquarium Care Agent can be expanded in the future to support
